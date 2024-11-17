@@ -1,0 +1,108 @@
+service: project-saa-3
+
+frameworkVersion: '3'
+
+provider:
+    name: aws
+    runtime: nodejs16.x
+    stage: ${opt:stage,'dev'}
+    region: us-west-2
+    memorySize: 512
+    timeout: 10
+    environment:
+        USERS_TABLE: ${self:custom.userstablename}
+
+custom:
+    userstablename: usersTable-${opt:stage,self:provider.stage}
+plugins:
+  - serverless-offline
+
+functions:
+    user:
+        handler: functions/user/user.createUser
+        description: "Creates a new user"
+        events:
+            - http:
+                path: user
+                method: post
+                cors: true
+        role: dynamodb
+resources:
+    Resources:
+        UserTable:
+            Type: AWS::DynamoDB::Table
+            Properties:
+                TableName: ${self:custom.userstablename}
+                AttributeDefinitions:
+                    - AttributeName: email
+                      AttributeType: S
+                    - AttributeName: country
+                      AttributeType: S
+                    - AttributeName: createdAt
+                      AttributeType: S
+                KeySchema:
+                    - AttributeName: email
+                      KeyType: HASH
+                BillingMode: PROVISIONED
+                ProvisionedThroughput:
+                    ReadCapacityUnits: 5
+                    WriteCapacityUnits: 10
+                GlobalSecondaryIndexes:
+                    - IndexName: createdAtIndex
+                      KeySchema:
+                        - AttributeName: country
+                          KeyType: HASH
+                        - AttributeName: createdAt
+                          KeyType: RANGE
+                      Projection:
+                          ProjectionType: ALL
+                      ProvisionedThroughput:
+                          ReadCapacityUnits: 5
+                          WriteCapacityUnits: 10
+        customRole:
+            Type: AWS::IAM::Role
+            Properties:
+              Path: /
+              RoleName: dynamodbLambdaRole-${opt:stage,self:provider.stage}
+              AssumeRolePolicyDocument:
+                Version: '2012-10-17'
+                Statement:
+                  - Effect: Allow
+                    Principal:
+                    Service:
+                      - lambda.amazonaws.com
+                    Action: sts:AssumeRole
+                Policies:
+                  - PolicyName: dynamodbLambdaRole-${opt:stage,self:provider.stage}
+                    PolicyDocument:
+                      Version: '2012-10-17'
+                      Statement:
+                        - Effect: Allow
+                          Action:
+                            - logs:CreateLogGroup
+                            - logs:CreateLogStream 
+                            - logs:PutLogEvents
+                          Resource:
+                            - 'Fn::Join':
+                              - ':'
+                              - 
+                                - 'arn:aws:logs'
+                                - Ref: 'AWS::Region'
+                                - Ref: 'AWS::AccountId'
+                                - 'log-group:/aws/lambda/*:*:*'
+                        - Effect: Allow
+                          Action:
+                            - "dynamodb:*"
+                          Resource:
+                            - 'Fn::Join':
+                              - ':'
+                              - 
+                                - 'arn:aws:dynamodb'
+                                - Ref: 'AWS::Region'
+                                - Ref: 'AWS::AccountId'
+                                - 'Fn::Join':
+                                  - ""
+                                  - 
+                                    - 'table/'
+                                    - Ref: 'UserTable'
+                          
